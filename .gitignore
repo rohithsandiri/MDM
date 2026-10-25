@@ -1,0 +1,15 @@
+*.o
+/agent/build/
+/agent/bin/
+/server/build/
+/server/bin/
+/tests/build/
+
+# generated certs/keys — never commit these
+/server/certs/*.key
+/server/certs/*.crt
+/server/certs/*.srl
+/server/certs/devices/
+
+*.db
+*.db-journal
