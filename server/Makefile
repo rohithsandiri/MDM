@@ -1,6 +1,6 @@
 CC      ?= cc
 CFLAGS  += -std=c11 -Wall -Wextra -Werror -g -I../proto -Isrc -I../third_party/cJSON
-LDFLAGS +=
+LDFLAGS += -lsqlite3
 
 SRC_LOCAL := $(shell find src -name '*.c')
 OBJ_LOCAL := $(SRC_LOCAL:.c=.o)

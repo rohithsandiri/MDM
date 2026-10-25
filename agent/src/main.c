@@ -1,11 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "config.h"
+#include "heartbeat.h"
 #include "version.h"
-
-static void print_usage(const char *argv0) {
-    fprintf(stderr, "usage: %s [--version]\n", argv0);
-}
 
 int main(int argc, char **argv) {
     if (argc >= 2 && strcmp(argv[1], "--version") == 0) {
@@ -13,6 +11,10 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    print_usage(argv[0]);
-    return 1;
+    mdm_agent_config_t cfg;
+    if (mdm_config_parse_args(&cfg, argc, argv) != 0) {
+        return 1;
+    }
+
+    return mdm_heartbeat_run(&cfg) == 0 ? 0 : 1;
 }
