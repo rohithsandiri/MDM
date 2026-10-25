@@ -21,6 +21,19 @@ int mdm_registry_open(mdm_registry_t *reg, const char *db_path);
  * Returns 0 on success, -1 on error. */
 int mdm_registry_record_checkin(mdm_registry_t *reg, const char *claimed_device_id, int64_t now);
 
+/* Stores `inventory_json` as the latest snapshot for the same row a
+ * check-in would touch (see mdm_registry_record_checkin). Returns 0 on
+ * success, -1 on error. */
+int mdm_registry_store_inventory(mdm_registry_t *reg, const char *claimed_device_id,
+                                  const char *inventory_json, int64_t now);
+
+/* Looks up the most recently seen row for claimed_device_id and returns
+ * its stored inventory JSON as a malloc'd string in *out_json (caller
+ * frees). Returns 0 and sets *out_json on success, 1 if no row/snapshot
+ * exists (with *out_json set to NULL), -1 on error. */
+int mdm_registry_get_latest_inventory(mdm_registry_t *reg, const char *claimed_device_id,
+                                       char **out_json);
+
 void mdm_registry_close(mdm_registry_t *reg);
 
 #endif /* MDM_SERVER_REGISTRY_H */

@@ -8,6 +8,8 @@
 #include <unistd.h>
 
 #include "cJSON.h"
+#include "framing.h"
+#include "inventory.h"
 #include "messages.h"
 #include "tls_client.h"
 
@@ -18,14 +20,47 @@ static void handle_stop_signal(int sig) {
     g_stop = 1;
 }
 
-static char *build_heartbeat_json(const char *device_id, int64_t now) {
+static cJSON *build_heartbeat_payload(const char *device_id, int64_t now, cJSON *inventory_json) {
     cJSON *root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, MDM_FIELD_PROTO_VERSION, MDM_PROTOCOL_VERSION);
     cJSON_AddNumberToObject(root, MDM_FIELD_MSG_KIND, MDM_MSG_HEARTBEAT_REQ);
     cJSON_AddStringToObject(root, MDM_FIELD_DEVICE_ID, device_id);
     cJSON_AddNumberToObject(root, MDM_FIELD_TIMESTAMP, (double)now);
+    if (inventory_json != NULL) {
+        cJSON_AddItemToObject(root, MDM_FIELD_INVENTORY, inventory_json);
+    }
+    return root;
+}
 
+/* Builds the heartbeat+inventory payload and, if it would exceed the wire
+ * framing's max frame size (package lists are the usual culprit on a real
+ * machine), progressively sheds the heaviest fields rather than sending a
+ * frame the server would reject outright. */
+static char *build_bounded_request_json(const char *device_id, int64_t now) {
+    mdm_inventory_t inv;
+    mdm_inventory_collect(&inv);
+    cJSON *inv_json = mdm_inventory_to_json(&inv);
+    mdm_inventory_free(&inv);
+
+    cJSON *root = build_heartbeat_payload(device_id, now, inv_json);
     char *json = cJSON_PrintUnformatted(root);
+
+    if (json != NULL && strlen(json) + 1 > MDM_FRAME_MAX_LEN) {
+        fprintf(stderr, "heartbeat: payload too large (%zu bytes), dropping package list\n",
+                strlen(json));
+        cJSON_DeleteItemFromObject(inv_json, "packages");
+        cJSON_AddItemToObject(inv_json, "packages_truncated", cJSON_CreateTrue());
+        free(json);
+        json = cJSON_PrintUnformatted(root);
+    }
+
+    if (json != NULL && strlen(json) + 1 > MDM_FRAME_MAX_LEN) {
+        fprintf(stderr, "heartbeat: payload still too large after truncation, dropping inventory\n");
+        cJSON_DeleteItemFromObject(root, MDM_FIELD_INVENTORY);
+        free(json);
+        json = cJSON_PrintUnformatted(root);
+    }
+
     cJSON_Delete(root);
     return json;
 }
@@ -36,7 +71,7 @@ static int do_one_heartbeat(const mdm_agent_config_t *cfg) {
         return -1;
     }
 
-    char *req_json = build_heartbeat_json(cfg->device_id, (int64_t)time(NULL));
+    char *req_json = build_bounded_request_json(cfg->device_id, (int64_t)time(NULL));
     if (req_json == NULL) {
         fprintf(stderr, "heartbeat: failed to build request JSON\n");
         mdm_conn_close(&conn);

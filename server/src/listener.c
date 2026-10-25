@@ -98,6 +98,21 @@ static void handle_connection(int client_fd, const char *client_ip, mdm_registry
         fprintf(stderr, "listener: failed to record check-in for '%s'\n", device_id->valuestring);
     }
 
+    cJSON *inventory = cJSON_GetObjectItemCaseSensitive(req, MDM_FIELD_INVENTORY);
+    if (cJSON_IsObject(inventory)) {
+        char *inv_json = cJSON_PrintUnformatted(inventory);
+        if (inv_json != NULL) {
+            if (mdm_registry_store_inventory(reg, device_id->valuestring, inv_json, now) != 0) {
+                fprintf(stderr, "listener: failed to store inventory for '%s'\n",
+                        device_id->valuestring);
+            } else {
+                printf("inventory: stored snapshot for device_id='%s' (%zu bytes)\n",
+                       device_id->valuestring, strlen(inv_json));
+            }
+            free(inv_json);
+        }
+    }
+
     char *resp_json = build_ack_json(device_id->valuestring, now);
     cJSON_Delete(req);
 

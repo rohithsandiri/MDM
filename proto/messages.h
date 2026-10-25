@@ -10,7 +10,11 @@
 #define MDM_PROTOCOL_VERSION      1
 #define MDM_DEVICE_ID_LEN         37   /* UUID string (36) + NUL */
 #define MDM_MAX_SIGNATURE_B64_LEN 1024
-#define MDM_MAX_PAYLOAD_LEN       65536
+/* Inventory payloads (installed-package lists especially) run well past
+ * a heartbeat's few dozen bytes on a real machine, not just the sparse
+ * test container — sized generously so a normal package count never
+ * trips the ceiling, while still bounding worst-case memory. */
+#define MDM_MAX_PAYLOAD_LEN       (4 * 1024 * 1024)
 
 /* ---- Top-level message kinds exchanged over the mTLS connection ---- */
 typedef enum {
