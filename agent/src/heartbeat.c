@@ -33,17 +33,60 @@ static cJSON *build_heartbeat_payload(const char *device_id, int64_t now, cJSON 
     return root;
 }
 
+/* Asks the privileged helper what its background USB/file-integrity
+ * detection threads have queued since the last ask. This is a local-only
+ * request (never signed — it isn't an action, just reading the helper's
+ * own telemetry back out) so it uses the plain poll_events shape the
+ * helper special-cases, not a signed envelope. Returns a new cJSON array
+ * (caller owns it), empty on any failure — a lost event is acceptable
+ * telemetry loss, never a reason to fail the heartbeat. */
+static cJSON *poll_helper_events(int helper_fd) {
+    cJSON *empty = cJSON_CreateArray();
+    if (helper_fd < 0) return empty;
+
+    static const char *POLL_REQUEST = "{\"poll_events\":true}";
+    if (mdm_frame_send(helper_fd, POLL_REQUEST, strlen(POLL_REQUEST)) != 0) {
+        fprintf(stderr, "heartbeat: failed to poll helper for policy events\n");
+        return empty;
+    }
+
+    char *resp_json = mdm_frame_recv(helper_fd);
+    if (resp_json == NULL) {
+        fprintf(stderr, "heartbeat: no response polling helper for policy events\n");
+        return empty;
+    }
+
+    cJSON *resp = cJSON_Parse(resp_json);
+    free(resp_json);
+    if (resp == NULL) return empty;
+
+    cJSON *events = cJSON_DetachItemFromObjectCaseSensitive(resp, MDM_FIELD_POLICY_EVENTS);
+    cJSON_Delete(resp);
+    if (events == NULL) return empty;
+
+    cJSON_Delete(empty);
+    return events;
+}
+
 /* Builds the heartbeat+inventory payload and, if it would exceed the wire
  * framing's max frame size (package lists are the usual culprit on a real
  * machine), progressively sheds the heaviest fields rather than sending a
  * frame the server would reject outright. */
-static char *build_bounded_request_json(const char *device_id, int64_t now) {
+static char *build_bounded_request_json(const char *device_id, int64_t now, int helper_fd) {
     mdm_inventory_t inv;
     mdm_inventory_collect(&inv);
     cJSON *inv_json = mdm_inventory_to_json(&inv);
     mdm_inventory_free(&inv);
 
     cJSON *root = build_heartbeat_payload(device_id, now, inv_json);
+
+    cJSON *events = poll_helper_events(helper_fd);
+    if (cJSON_GetArraySize(events) > 0) {
+        cJSON_AddItemToObject(root, MDM_FIELD_POLICY_EVENTS, events);
+    } else {
+        cJSON_Delete(events);
+    }
+
     char *json = cJSON_PrintUnformatted(root);
 
     if (json != NULL && strlen(json) + 1 > MDM_FRAME_MAX_LEN) {
@@ -73,7 +116,7 @@ static int do_one_heartbeat(const mdm_agent_config_t *cfg, SSL_CTX *tls_ctx,
         return -1;
     }
 
-    char *req_json = build_bounded_request_json(cfg->device_id, (int64_t)time(NULL));
+    char *req_json = build_bounded_request_json(cfg->device_id, (int64_t)time(NULL), helper_fd);
     if (req_json == NULL) {
         fprintf(stderr, "heartbeat: failed to build request JSON\n");
         mdm_conn_close(&conn);

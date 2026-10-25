@@ -71,6 +71,24 @@ typedef enum {
 #define MDM_FIELD_ISSUED_AT       "issued_at"
 #define MDM_FIELD_EXPIRES_AT      "expires_at"
 
+/* Policy enforcement (Phase 4). `policy_events` is an array of
+ * {policy_type, message, timestamp} objects attached to a heartbeat
+ * request — the agent's privileged helper runs the USB/file-integrity
+ * detection loops itself (it already holds root, and already
+ * independently re-verifies the signed command that enabled them), and
+ * the unprivileged main loop just polls it for queued events each
+ * heartbeat rather than receiving them asynchronously. */
+#define MDM_FIELD_POLICY_EVENTS   "policy_events"
+#define MDM_FIELD_POLICY_TYPE     "policy_type"
+#define MDM_FIELD_MESSAGE         "message"
+
+/* Well-known keys inside a command's `params` object. Each command type
+ * only looks at the subset relevant to it. */
+#define MDM_PARAM_ENABLED         "enabled"  /* usb_lockdown: bool */
+#define MDM_PARAM_ACTION          "action"   /* firewall/file_integrity: "apply"/"clear"/"watch"/"unwatch" */
+#define MDM_PARAM_RULES           "rules"    /* firewall: array of nft rule strings */
+#define MDM_PARAM_PATH            "path"     /* file_integrity: path to watch/unwatch */
+
 /* ---- Signed command envelope (Phase 3 onward) ----
  * `payload` is the exact JSON text that was signed, carried as a JSON
  * string value so it survives the wire byte-for-byte; the agent verifies

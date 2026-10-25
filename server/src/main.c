@@ -19,9 +19,13 @@ static void print_usage(const char *argv0) {
         "                   [--server-key PATH]\n"
         "       %s --print-inventory FINGERPRINT [--db PATH]\n"
         "       %s --list-devices [--db PATH]\n"
-        "       %s --queue-command FINGERPRINT --command-type NAME [--ttl SECONDS]\n"
+        "       %s --queue-command FINGERPRINT --command-type NAME [--params JSON] [--ttl SECONDS]\n"
         "                   [--signing-key PATH] [--db PATH]\n"
-        "  command types: lock, reboot, wipe, usb_lockdown, firewall, file_integrity\n",
+        "  command types: lock, reboot, wipe, usb_lockdown, firewall, file_integrity\n"
+        "  --params examples:\n"
+        "    usb_lockdown:   '{\"enabled\":true}'\n"
+        "    firewall:       '{\"action\":\"apply\",\"rules\":[\"tcp dport 22 accept\",\"ip saddr 10.0.0.0/8 drop\"]}'\n"
+        "    file_integrity: '{\"action\":\"watch\",\"path\":\"/etc/passwd\"}'\n",
         argv0, argv0, argv0, argv0, argv0);
 }
 
@@ -60,7 +64,7 @@ static int parse_command_type(const char *name) {
 }
 
 static int queue_command(mdm_registry_t *reg, const char *fingerprint, const char *command_type_name,
-                          int ttl_seconds, const char *signing_key_path) {
+                          const char *params_json, int ttl_seconds, const char *signing_key_path) {
     int command_type = parse_command_type(command_type_name);
     if (command_type == MDM_CMD_UNKNOWN) {
         fprintf(stderr, "unknown command type '%s'\n", command_type_name);
@@ -81,8 +85,8 @@ static int queue_command(mdm_registry_t *reg, const char *fingerprint, const cha
         return 1;
     }
 
-    int queue_rc = mdm_commands_queue(reg, &signer, device_row_id, command_type, NULL, ttl_seconds,
-                                       (int64_t)time(NULL));
+    int queue_rc = mdm_commands_queue(reg, &signer, device_row_id, command_type, params_json,
+                                       ttl_seconds, (int64_t)time(NULL));
     mdm_signer_free(&signer);
 
     if (queue_rc != 0) {
@@ -110,6 +114,7 @@ int main(int argc, char **argv) {
     const char *print_inventory_fingerprint = NULL;
     const char *queue_command_fingerprint = NULL;
     const char *queue_command_type_name = NULL;
+    const char *queue_command_params_json = NULL;
     int queue_command_ttl = 300;
     int list_devices = 0;
 
@@ -134,6 +139,8 @@ int main(int argc, char **argv) {
             queue_command_fingerprint = argv[++i];
         } else if (strcmp(argv[i], "--command-type") == 0 && i + 1 < argc) {
             queue_command_type_name = argv[++i];
+        } else if (strcmp(argv[i], "--params") == 0 && i + 1 < argc) {
+            queue_command_params_json = argv[++i];
         } else if (strcmp(argv[i], "--ttl") == 0 && i + 1 < argc) {
             queue_command_ttl = atoi(argv[++i]);
         } else {
@@ -161,7 +168,7 @@ int main(int argc, char **argv) {
             rc = 1;
         } else {
             rc = queue_command(&reg, queue_command_fingerprint, queue_command_type_name,
-                                queue_command_ttl, signing_key_path);
+                                queue_command_params_json, queue_command_ttl, signing_key_path);
         }
     } else {
         SSL_CTX *tls_ctx = mdm_tls_server_ctx_new(ca_cert_path, server_cert_path, server_key_path);

@@ -175,6 +175,21 @@ static void handle_connection(SSL *ssl, const char *client_ip, const char *finge
             free(inv_json);
         }
     }
+
+    cJSON *policy_events = cJSON_GetObjectItemCaseSensitive(req, MDM_FIELD_POLICY_EVENTS);
+    if (cJSON_IsArray(policy_events)) {
+        cJSON *event = NULL;
+        cJSON_ArrayForEach(event, policy_events) {
+            cJSON *policy_type = cJSON_GetObjectItemCaseSensitive(event, MDM_FIELD_POLICY_TYPE);
+            cJSON *message = cJSON_GetObjectItemCaseSensitive(event, MDM_FIELD_MESSAGE);
+            cJSON *ts = cJSON_GetObjectItemCaseSensitive(event, MDM_FIELD_TIMESTAMP);
+            printf("ALERT: device_id=%lld policy=%s at=%lld: %s\n", (long long)device_row_id,
+                   cJSON_IsString(policy_type) ? policy_type->valuestring : "?",
+                   cJSON_IsNumber(ts) ? (long long)ts->valuedouble : (long long)now,
+                   cJSON_IsString(message) ? message->valuestring : "?");
+        }
+    }
+
     cJSON_Delete(req);
 
     cJSON *pending_command = NULL;

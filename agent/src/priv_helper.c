@@ -14,6 +14,10 @@
 #include "crypto_verify.h"
 #include "framing.h"
 #include "messages.h"
+#include "policy/events.h"
+#include "policy/file_integrity.h"
+#include "policy/firewall.h"
+#include "policy/usb_lockdown.h"
 
 #define MDM_HELPER_PUBKEY_ENV "MDM_SIGNING_PUBKEY_PATH"
 #define MDM_HELPER_IPC_FD 3
@@ -95,11 +99,9 @@ static const char *result_code_name(mdm_result_code_t rc) {
 }
 
 /* Fixed, enumerated dispatch — exhaustive over mdm_command_type_t, never
- * a string. Phase 3 only proves the privilege-separated pipeline end to
- * end; real actions (udev/nft/inotify/lock/reboot/wipe) replace these
- * log-only bodies one enum value at a time in Phases 4-5. */
+ * a string. The three policy commands are real as of Phase 4; lock/
+ * reboot/wipe stay log-only stubs until Phase 5. */
 static mdm_result_code_t dispatch_command(mdm_command_type_t type, cJSON *params) {
-    (void)params;
     switch (type) {
         case MDM_CMD_LOCK:
             printf("priv_helper: [stub] would lock all sessions now (Phase 5)\n");
@@ -111,14 +113,14 @@ static mdm_result_code_t dispatch_command(mdm_command_type_t type, cJSON *params
             printf("priv_helper: [stub] would wipe a target directory now (Phase 5)\n");
             return MDM_RESULT_OK;
         case MDM_CMD_POLICY_USB_LOCKDOWN:
-            printf("priv_helper: [stub] would apply USB lockdown policy now (Phase 4)\n");
-            return MDM_RESULT_OK;
+            return mdm_policy_usb_lockdown_apply(params) == 0 ? MDM_RESULT_OK
+                                                               : MDM_RESULT_ERR_EXEC_FAILED;
         case MDM_CMD_POLICY_FIREWALL:
-            printf("priv_helper: [stub] would apply firewall policy now (Phase 4)\n");
-            return MDM_RESULT_OK;
+            return mdm_policy_firewall_apply(params) == 0 ? MDM_RESULT_OK
+                                                           : MDM_RESULT_ERR_EXEC_FAILED;
         case MDM_CMD_POLICY_FILE_INTEGRITY:
-            printf("priv_helper: [stub] would arm file-integrity watch now (Phase 4)\n");
-            return MDM_RESULT_OK;
+            return mdm_policy_file_integrity_apply(params) == 0 ? MDM_RESULT_OK
+                                                                 : MDM_RESULT_ERR_EXEC_FAILED;
         case MDM_CMD_UNKNOWN:
         case MDM_CMD_COUNT:
         default:
@@ -126,7 +128,38 @@ static mdm_result_code_t dispatch_command(mdm_command_type_t type, cJSON *params
     }
 }
 
+#define MDM_HELPER_POLL_EVENTS_FIELD "poll_events"
+
+/* A local-only request from the main loop asking what its background
+ * detection threads have queued — never signed, since it isn't an
+ * action request at all, just the main loop reading its own helper's
+ * telemetry back out. */
+static int try_handle_poll_events(int fd, const char *request_json) {
+    cJSON *req = cJSON_Parse(request_json);
+    if (req == NULL) return 0;
+
+    cJSON *poll = cJSON_GetObjectItemCaseSensitive(req, MDM_HELPER_POLL_EVENTS_FIELD);
+    if (!cJSON_IsTrue(poll)) {
+        cJSON_Delete(req);
+        return 0;
+    }
+    cJSON_Delete(req);
+
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddItemToObject(resp, MDM_FIELD_POLICY_EVENTS, mdm_policy_events_drain());
+    char *resp_json = cJSON_PrintUnformatted(resp);
+    cJSON_Delete(resp);
+
+    if (resp_json != NULL) {
+        mdm_frame_send(fd, resp_json, strlen(resp_json));
+        free(resp_json);
+    }
+    return 1;
+}
+
 static void handle_one_request(int fd, mdm_verifier_t *verifier, const char *envelope_json) {
+    if (try_handle_poll_events(fd, envelope_json)) return;
+
     mdm_result_code_t result = MDM_RESULT_ERR_MALFORMED;
 
     cJSON *envelope = cJSON_Parse(envelope_json);
@@ -203,6 +236,8 @@ int mdm_priv_helper_main(void) {
         fprintf(stderr, "priv_helper: failed to load trusted signing public key, refusing to start\n");
         return 1;
     }
+
+    mdm_policy_events_init();
 
     printf("priv_helper: ready (pid=%d, euid=%d)\n", (int)getpid(), (int)geteuid());
 
