@@ -7,8 +7,10 @@
 
 static void print_usage(const char *argv0) {
     fprintf(stderr,
-        "usage: %s [--server HOST] [--port PORT] [--device-id ID] [--interval SECONDS]\n",
-        argv0);
+        "usage: %s [--server HOST] [--port PORT] [--device-id ID] [--interval SECONDS]\n"
+        "       %*s [--ca-cert PATH] [--client-cert PATH] [--client-key PATH]\n"
+        "       %*s [--signing-pubkey PATH] [--state-file PATH] [--unprivileged-user NAME]\n",
+        argv0, (int)strlen(argv0), "", (int)strlen(argv0), "");
 }
 
 static void apply_defaults(mdm_agent_config_t *cfg) {
@@ -24,6 +26,14 @@ static void apply_defaults(mdm_agent_config_t *cfg) {
     } else {
         snprintf(cfg->device_id, sizeof(cfg->device_id), "unknown-device");
     }
+
+    strncpy(cfg->ca_cert_path, "../server/certs/ca.crt", sizeof(cfg->ca_cert_path) - 1);
+    strncpy(cfg->client_cert_path, "client.crt", sizeof(cfg->client_cert_path) - 1);
+    strncpy(cfg->client_key_path, "client.key", sizeof(cfg->client_key_path) - 1);
+    strncpy(cfg->signing_pubkey_path, "../server/certs/signing_pub.pem",
+            sizeof(cfg->signing_pubkey_path) - 1);
+    strncpy(cfg->state_file_path, "mdm-agent.state", sizeof(cfg->state_file_path) - 1);
+    strncpy(cfg->unprivileged_user, "nobody", sizeof(cfg->unprivileged_user) - 1);
 }
 
 int mdm_config_parse_args(mdm_agent_config_t *cfg, int argc, char **argv) {
@@ -38,6 +48,18 @@ int mdm_config_parse_args(mdm_agent_config_t *cfg, int argc, char **argv) {
             strncpy(cfg->device_id, argv[++i], sizeof(cfg->device_id) - 1);
         } else if (strcmp(argv[i], "--interval") == 0 && i + 1 < argc) {
             cfg->heartbeat_interval_sec = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--ca-cert") == 0 && i + 1 < argc) {
+            strncpy(cfg->ca_cert_path, argv[++i], sizeof(cfg->ca_cert_path) - 1);
+        } else if (strcmp(argv[i], "--client-cert") == 0 && i + 1 < argc) {
+            strncpy(cfg->client_cert_path, argv[++i], sizeof(cfg->client_cert_path) - 1);
+        } else if (strcmp(argv[i], "--client-key") == 0 && i + 1 < argc) {
+            strncpy(cfg->client_key_path, argv[++i], sizeof(cfg->client_key_path) - 1);
+        } else if (strcmp(argv[i], "--signing-pubkey") == 0 && i + 1 < argc) {
+            strncpy(cfg->signing_pubkey_path, argv[++i], sizeof(cfg->signing_pubkey_path) - 1);
+        } else if (strcmp(argv[i], "--state-file") == 0 && i + 1 < argc) {
+            strncpy(cfg->state_file_path, argv[++i], sizeof(cfg->state_file_path) - 1);
+        } else if (strcmp(argv[i], "--unprivileged-user") == 0 && i + 1 < argc) {
+            strncpy(cfg->unprivileged_user, argv[++i], sizeof(cfg->unprivileged_user) - 1);
         } else {
             fprintf(stderr, "unrecognized argument: %s\n", argv[i]);
             print_usage(argv[0]);

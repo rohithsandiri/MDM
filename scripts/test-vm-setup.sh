@@ -46,9 +46,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential pkg-config \
-    libssl-dev libcurl4-openssl-dev libsqlite3-dev libudev-dev \
+    openssl libssl-dev libcurl4-openssl-dev libsqlite3-dev sqlite3 libudev-dev \
     nftables dbus systemd systemd-sysv \
-    iproute2 procps util-linux \
+    iproute2 procps util-linux netcat-openbsd \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Standard trick for running systemd as PID 1 inside a container.

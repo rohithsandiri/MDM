@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "cJSON.h"
+#include "commands.h"
 #include "framing.h"
 #include "inventory.h"
 #include "messages.h"
@@ -65,9 +66,10 @@ static char *build_bounded_request_json(const char *device_id, int64_t now) {
     return json;
 }
 
-static int do_one_heartbeat(const mdm_agent_config_t *cfg) {
+static int do_one_heartbeat(const mdm_agent_config_t *cfg, SSL_CTX *tls_ctx,
+                             mdm_verifier_t *verifier, int helper_fd) {
     mdm_conn_t conn;
-    if (mdm_conn_connect(&conn, cfg->server_host, cfg->server_port) != 0) {
+    if (mdm_conn_connect(&conn, tls_ctx, cfg->server_host, cfg->server_port) != 0) {
         return -1;
     }
 
@@ -106,20 +108,31 @@ static int do_one_heartbeat(const mdm_agent_config_t *cfg) {
     }
 
     printf("heartbeat: ack received for device '%s'\n", cfg->device_id);
+
+    cJSON *pending_command = cJSON_GetObjectItemCaseSensitive(resp, MDM_FIELD_PENDING_COMMAND);
+    if (cJSON_IsObject(pending_command)) {
+        char *envelope_json = cJSON_PrintUnformatted(pending_command);
+        if (envelope_json != NULL) {
+            mdm_commands_handle_envelope(envelope_json, verifier, helper_fd, cfg->state_file_path);
+            free(envelope_json);
+        }
+    }
+
     cJSON_Delete(resp);
     return 0;
 }
 
-int mdm_heartbeat_run(const mdm_agent_config_t *cfg) {
+int mdm_heartbeat_run(const mdm_agent_config_t *cfg, SSL_CTX *tls_ctx, mdm_verifier_t *verifier,
+                      int helper_fd) {
     signal(SIGINT, handle_stop_signal);
     signal(SIGTERM, handle_stop_signal);
 
-    printf("mdm-agent: device_id='%s' server=%s:%u interval=%ds\n",
+    printf("mdm-agent: device_id='%s' server=%s:%u interval=%ds (mTLS)\n",
            cfg->device_id, cfg->server_host, cfg->server_port,
            cfg->heartbeat_interval_sec);
 
     while (!g_stop) {
-        if (do_one_heartbeat(cfg) != 0) {
+        if (do_one_heartbeat(cfg, tls_ctx, verifier, helper_fd) != 0) {
             fprintf(stderr, "heartbeat: check-in failed, will retry\n");
         }
 

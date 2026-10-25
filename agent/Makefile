@@ -1,7 +1,9 @@
-CC      ?= cc
-CFLAGS  += -std=c11 -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE \
-           -Wall -Wextra -Werror -g -I../proto -Isrc -I../third_party/cJSON
-LDFLAGS +=
+CC         ?= cc
+OPENSSL_CFLAGS := $(shell pkg-config --cflags openssl)
+OPENSSL_LIBS   := $(shell pkg-config --libs openssl)
+CFLAGS  += -std=c11 -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE -D_DARWIN_C_SOURCE \
+           -Wall -Wextra -Werror -g -I../proto -Isrc -I../third_party/cJSON $(OPENSSL_CFLAGS)
+LDFLAGS += $(OPENSSL_LIBS)
 
 SRC_LOCAL := $(shell find src -name '*.c')
 OBJ_LOCAL := $(SRC_LOCAL:.c=.o)

@@ -56,12 +56,29 @@ typedef enum {
 #define MDM_FIELD_SIGNER_KEY_ID   "signer_key_id"
 #define MDM_FIELD_RESULT_CODE     "result_code"
 #define MDM_FIELD_RESULT_MESSAGE  "result_message"
+#define MDM_FIELD_PENDING_COMMAND "pending_command" /* signed envelope, embedded in a heartbeat ack */
+
+/* Replay-protection fields, inside the signed payload (so they're covered
+ * by the signature, not just the envelope). `sequence` is the actual
+ * enforcement mechanism: strictly increasing per device, persisted by the
+ * agent, and any command at or below the last-accepted value is rejected
+ * outright regardless of signature validity. `issued_at`/`expires_at` are
+ * a second, independent bound (catches a captured-but-not-yet-replayed
+ * command sitting unused past its window). `nonce` is carried for audit
+ * logging of exactly which command instance was seen. */
+#define MDM_FIELD_SEQUENCE        "sequence"
+#define MDM_FIELD_NONCE           "nonce"
+#define MDM_FIELD_ISSUED_AT       "issued_at"
+#define MDM_FIELD_EXPIRES_AT      "expires_at"
 
 /* ---- Signed command envelope (Phase 3 onward) ----
- * `payload` is the exact JSON text that was signed; the agent must verify
- * `signature` over `payload` with the embedded server public key before
- * parsing `payload` into a command. Anything that fails verification is
- * rejected and logged, never partially acted on. */
+ * `payload` is the exact JSON text that was signed, carried as a JSON
+ * string value so it survives the wire byte-for-byte; the agent verifies
+ * `signature` (Ed25519, base64) over those exact bytes *before* parsing
+ * `payload` into a command. Never re-serialize-then-verify: parse only
+ * after the raw bytes have already checked out. Illustrative of the wire
+ * shape only — code works with cJSON/dynamic strings, not this struct
+ * directly, since a 4MB fixed buffer has no business on the stack. */
 typedef struct {
     char     signer_key_id[64];
     char     signature_b64[MDM_MAX_SIGNATURE_B64_LEN];

@@ -9,7 +9,11 @@
 /server/certs/*.key
 /server/certs/*.crt
 /server/certs/*.srl
+/server/certs/*.pem
 /server/certs/devices/
+
+# agent-side replay-protection state (device-local, not source)
+/agent/*.state
 
 *.db
 *.db-journal
